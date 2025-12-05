@@ -27,6 +27,24 @@ interface GameSave {
   usedPromoCodes: string[];
   upgrades: Upgrade[];
   referralId: string;
+  username: string;
+  totalEarned: number;
+  hasPremium: boolean;
+}
+
+interface Achievement {
+  id: string;
+  emoji: string;
+  name: string;
+  description: string;
+  requirement: number | string;
+  isCompleted: (game: GameSave) => boolean;
+}
+
+interface LeaderboardEntry {
+  username: string;
+  coins: number;
+  rank: number;
 }
 
 const Index = () => {
@@ -39,6 +57,21 @@ const Index = () => {
       return data.referralId || Math.random().toString(36).substring(2, 10);
     }
     return refId || Math.random().toString(36).substring(2, 10);
+  });
+
+  const [username, setUsername] = useState(() => {
+    const saved = loadGame();
+    return saved?.username || `Player${Math.floor(Math.random() * 9999)}`;
+  });
+
+  const [totalEarned, setTotalEarned] = useState(() => {
+    const saved = loadGame();
+    return saved?.totalEarned || 0;
+  });
+
+  const [hasPremium, setHasPremium] = useState(() => {
+    const saved = loadGame();
+    return saved?.hasPremium || false;
   });
 
   const loadGame = (): GameSave | null => {
@@ -119,13 +152,93 @@ const Index = () => {
       usedPromoCodes,
       upgrades,
       referralId,
+      username,
+      totalEarned,
+      hasPremium,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData));
+    updateLeaderboard(gameData);
   };
+
+  const updateLeaderboard = (gameData: GameSave) => {
+    const leaderboardKey = 'maycoin_leaderboard';
+    const saved = localStorage.getItem(leaderboardKey);
+    let leaderboard: LeaderboardEntry[] = saved ? JSON.parse(saved) : [];
+
+    const existingIndex = leaderboard.findIndex(e => e.username === gameData.username);
+    if (existingIndex >= 0) {
+      leaderboard[existingIndex].coins = gameData.coins;
+    } else {
+      leaderboard.push({ username: gameData.username, coins: gameData.coins, rank: 0 });
+    }
+
+    leaderboard.sort((a, b) => b.coins - a.coins);
+    leaderboard = leaderboard.slice(0, 10).map((entry, index) => ({ ...entry, rank: index + 1 }));
+    localStorage.setItem(leaderboardKey, JSON.stringify(leaderboard));
+  };
+
+  const getLeaderboard = (): LeaderboardEntry[] => {
+    const saved = localStorage.getItem('maycoin_leaderboard');
+    return saved ? JSON.parse(saved) : [];
+  };
+
+  const achievements: Achievement[] = [
+    {
+      id: 'newbie',
+      emoji: '🌱',
+      name: 'Новичок',
+      description: 'Заработайте 35,000 MAY',
+      requirement: 35000,
+      isCompleted: (game) => game.totalEarned >= 35000,
+    },
+    {
+      id: 'experienced',
+      emoji: '⚡',
+      name: 'Опытный',
+      description: 'Заработайте 250,000 MAY',
+      requirement: 250000,
+      isCompleted: (game) => game.totalEarned >= 250000,
+    },
+    {
+      id: 'master',
+      emoji: '👑',
+      name: 'Мастер',
+      description: 'Заработайте 500,000 MAY',
+      requirement: 500000,
+      isCompleted: (game) => game.totalEarned >= 500000,
+    },
+    {
+      id: 'freebie',
+      emoji: '🎁',
+      name: 'Халява!',
+      description: 'Активируйте 20 промокодов',
+      requirement: 20,
+      isCompleted: (game) => game.usedPromoCodes.length >= 20,
+    },
+    {
+      id: 'winner',
+      emoji: '🏆',
+      name: 'Я победил!',
+      description: 'Займите первое место в таблице лидеров',
+      requirement: 'rank1',
+      isCompleted: (game) => {
+        const leaderboard = getLeaderboard();
+        return leaderboard[0]?.username === game.username;
+      },
+    },
+    {
+      id: 'premium',
+      emoji: '💎',
+      name: 'Премиум пользователь',
+      description: 'Купите подписку MAY PLUS',
+      requirement: 'premium',
+      isCompleted: (game) => game.hasPremium,
+    },
+  ];
 
   useEffect(() => {
     saveGame();
-  }, [coins, clickPower, autoClickRate, totalClicks, usedPromoCodes, upgrades]);
+  }, [coins, clickPower, autoClickRate, totalClicks, usedPromoCodes, upgrades, username, totalEarned, hasPremium]);
 
   useEffect(() => {
     if (autoClickRate > 0) {
@@ -151,6 +264,7 @@ const Index = () => {
   const handleClick = () => {
     setCoins((prev) => prev + clickPower);
     setTotalClicks((prev) => prev + 1);
+    setTotalEarned((prev) => prev + clickPower);
   };
 
   const buyUpgrade = (upgrade: Upgrade) => {
@@ -202,6 +316,7 @@ const Index = () => {
 
     if (promoCodes[code]) {
       setCoins((prev) => prev + promoCodes[code]);
+      setTotalEarned((prev) => prev + promoCodes[code]);
       setUsedPromoCodes((prev) => [...prev, code]);
       setPromoCode('');
       toast({
@@ -246,6 +361,7 @@ const Index = () => {
       }
 
       setCoins((prev) => prev + prize);
+      setTotalEarned((prev) => prev + prize);
       setIsSpinning(false);
 
       toast({
@@ -278,44 +394,44 @@ const Index = () => {
 
         <Tabs defaultValue="game" className="w-full">
           <TabsList className="grid w-full grid-cols-4 bg-card/50 backdrop-blur border border-primary/30">
-            <TabsTrigger value="game" className="data-[state=active]:bg-primary data-[state=active]:text-black">
-              <Icon name="Gamepad2" size={18} className="mr-2" />
-              Игра
+            <TabsTrigger value="game" className="data-[state=active]:bg-primary data-[state=active]:text-black text-xs md:text-base">
+              <Icon name="Gamepad2" size={18} className="md:mr-2" />
+              <span className="hidden md:inline">Игра</span>
             </TabsTrigger>
-            <TabsTrigger value="about" className="data-[state=active]:bg-primary data-[state=active]:text-black">
-              <Icon name="Info" size={18} className="mr-2" />
-              О проекте
+            <TabsTrigger value="about" className="data-[state=active]:bg-primary data-[state=active]:text-black text-xs md:text-base">
+              <Icon name="Info" size={18} className="md:mr-2" />
+              <span className="hidden md:inline">О проекте</span>
             </TabsTrigger>
-            <TabsTrigger value="gifts" className="data-[state=active]:bg-primary data-[state=active]:text-black">
-              <Icon name="Gift" size={18} className="mr-2" />
-              Подарки
+            <TabsTrigger value="gifts" className="data-[state=active]:bg-primary data-[state=active]:text-black text-xs md:text-base">
+              <Icon name="Gift" size={18} className="md:mr-2" />
+              <span className="hidden md:inline">Подарки</span>
             </TabsTrigger>
-            <TabsTrigger value="profile" className="data-[state=active]:bg-primary data-[state=active]:text-black">
-              <Icon name="User" size={18} className="mr-2" />
-              Профиль
+            <TabsTrigger value="profile" className="data-[state=active]:bg-primary data-[state=active]:text-black text-xs md:text-base">
+              <Icon name="User" size={18} className="md:mr-2" />
+              <span className="hidden md:inline">Профиль</span>
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="game" className="mt-6">
-            <div className="grid lg:grid-cols-2 gap-6">
-              <Card className="bg-card/80 backdrop-blur border-primary/30 p-8">
-                <div className="flex flex-col items-center justify-center space-y-6">
-                  <h2 className="text-2xl font-semibold text-primary neon-text">Кликай и зарабатывай!</h2>
+            <div className="grid lg:grid-cols-2 gap-4 md:gap-6">
+              <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-8">
+                <div className="flex flex-col items-center justify-center space-y-4 md:space-y-6">
+                  <h2 className="text-lg md:text-2xl font-semibold text-primary neon-text text-center">Кликай и зарабатывай!</h2>
                   
                   <button
                     onClick={handleClick}
-                    className="relative w-64 h-64 rounded-full bg-gradient-to-br from-primary to-secondary neon-glow animate-glow transition-transform hover:scale-105 active:scale-95 cursor-pointer border-4 border-primary/50"
+                    className="relative w-48 h-48 md:w-64 md:h-64 rounded-full bg-gradient-to-br from-primary to-secondary neon-glow animate-glow transition-transform hover:scale-105 active:scale-95 cursor-pointer border-4 border-primary/50"
                   >
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-primary/20 to-transparent animate-pulse"></div>
-                    <span className="relative text-4xl font-bold text-black">MAY COIN</span>
+                    <span className="relative text-2xl md:text-4xl font-bold text-black">MAY COIN</span>
                   </button>
 
                   <div className="text-center space-y-2">
-                    <p className="text-lg text-muted-foreground">
+                    <p className="text-base md:text-lg text-muted-foreground">
                       +{clickPower} монет за клик
                     </p>
                     {autoClickRate > 0 && (
-                      <p className="text-lg text-primary">
+                      <p className="text-base md:text-lg text-primary">
                         🤖 +{autoClickRate} монет/сек
                       </p>
                     )}
@@ -329,28 +445,28 @@ const Index = () => {
                   {upgrades.map((upgrade) => (
                     <Card
                       key={upgrade.id}
-                      className="bg-muted/30 border-primary/20 p-4 hover:border-primary/50 transition-all"
+                      className="bg-muted/30 border-primary/20 p-3 md:p-4 hover:border-primary/50 transition-all"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-white">{upgrade.name}</h4>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-semibold text-white text-sm md:text-base">{upgrade.name}</h4>
                             {upgrade.owned > 0 && (
                               <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded">
                                 x{upgrade.owned}
                               </span>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground mt-1">{upgrade.description}</p>
+                          <p className="text-xs md:text-sm text-muted-foreground mt-1">{upgrade.description}</p>
                           <div className="flex items-center gap-2 mt-2">
-                            <Icon name="Coins" size={16} className="text-primary" />
-                            <span className="text-primary font-semibold">{upgrade.cost}</span>
+                            <Icon name="Coins" size={14} className="text-primary" />
+                            <span className="text-primary font-semibold text-sm md:text-base">{upgrade.cost}</span>
                           </div>
                         </div>
                         <Button
                           onClick={() => buyUpgrade(upgrade)}
                           disabled={coins < upgrade.cost}
-                          className="ml-4 bg-primary hover:bg-primary/80 text-black font-semibold"
+                          className="bg-primary hover:bg-primary/80 text-black font-semibold text-xs md:text-sm px-3 md:px-4 whitespace-nowrap"
                         >
                           Купить
                         </Button>
@@ -363,9 +479,9 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="about" className="mt-6">
-            <Card className="bg-card/80 backdrop-blur border-primary/30 p-8 max-w-3xl mx-auto">
-              <h2 className="text-3xl font-bold mb-6 text-primary neon-text">О проекте MAY COIN</h2>
-              <div className="space-y-4 text-lg">
+            <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-8 max-w-3xl mx-auto">
+              <h2 className="text-2xl md:text-3xl font-bold mb-4 md:mb-6 text-primary neon-text">О проекте MAY COIN</h2>
+              <div className="space-y-3 md:space-y-4 text-sm md:text-lg">
                 <p>
                   🎮 <strong className="text-primary">MAY COIN</strong> — это увлекательная игра-кликер в неоновом киберпанк стиле!
                 </p>
@@ -392,8 +508,8 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="gifts" className="mt-6">
-            <div className="grid lg:grid-cols-2 gap-6">
-              <Card className="bg-card/80 backdrop-blur border-primary/30 p-8">
+            <div className="grid lg:grid-cols-2 gap-4 md:gap-6">
+              <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-8">
                 <h3 className="text-2xl font-semibold mb-6 text-primary neon-text">🎫 Промокоды</h3>
                 <div className="space-y-4">
                   <div className="flex gap-2">
@@ -435,10 +551,10 @@ const Index = () => {
                 </div>
               </Card>
 
-              <Card className="bg-card/80 backdrop-blur border-primary/30 p-8">
-                <h3 className="text-2xl font-semibold mb-6 text-primary neon-text">🎰 Колесо фортуны</h3>
-                <div className="flex flex-col items-center space-y-6">
-                  <div className="relative w-64 h-64">
+              <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-8">
+                <h3 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6 text-primary neon-text">🎰 Колесо фортуны</h3>
+                <div className="flex flex-col items-center space-y-4 md:space-y-6">
+                  <div className="relative w-48 h-48 md:w-64 md:h-64">
                     <div
                       className="absolute inset-0 rounded-full border-8 border-primary neon-glow"
                       style={{
@@ -474,129 +590,188 @@ const Index = () => {
             </div>
           </TabsContent>
 
-          <TabsContent value="profile" className="mt-6">
-            <Card className="bg-card/80 backdrop-blur border-primary/30 p-8 max-w-2xl mx-auto">
-              <div className="flex items-center gap-6 mb-8">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-br from-primary to-secondary neon-glow flex items-center justify-center">
-                  <Icon name="User" size={48} className="text-black" />
+          <TabsContent value="profile" className="mt-6 space-y-6">
+            <div className="max-w-6xl mx-auto">
+              <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-8">
+                <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6 mb-6">
+                  <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-primary to-secondary neon-glow flex items-center justify-center">
+                    <Icon name="User" size={40} className="text-black md:w-12 md:h-12" />
+                  </div>
+                  <div className="text-center md:text-left flex-1">
+                    <h2 className="text-2xl md:text-3xl font-bold text-primary neon-text">{username}</h2>
+                    <p className="text-muted-foreground text-sm md:text-base">Кликер-магнат</p>
+                  </div>
+                  {hasPremium && (
+                    <div className="bg-gradient-to-r from-yellow-500/20 to-primary/20 border border-yellow-500/50 rounded-lg px-4 py-2">
+                      <span className="text-yellow-400 font-semibold flex items-center gap-2">
+                        <Icon name="Crown" size={20} />
+                        MAY PLUS
+                      </span>
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <h2 className="text-3xl font-bold text-primary neon-text">Игрок</h2>
-                  <p className="text-muted-foreground">Кликер-магнат</p>
-                </div>
-              </div>
 
-              <Card className="bg-primary/10 border-primary/30 p-6 mb-6">
-                <h3 className="text-xl font-semibold mb-4 text-primary flex items-center gap-2">
-                  <Icon name="Link" size={20} />
-                  Реферальная ссылка
-                </h3>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Поделитесь ссылкой с друзьями — они получат 50 монет при первом входе!
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    value={`${window.location.origin}?ref=${referralId}`}
-                    readOnly
-                    className="bg-muted/30 border-primary/30 text-white font-mono text-sm"
-                  />
-                  <Button
-                    onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}?ref=${referralId}`);
-                      toast({
-                        title: "Скопировано!",
-                        description: "Реферальная ссылка скопирована в буфер обмена",
-                      });
-                    }}
-                    className="bg-primary hover:bg-primary/80 text-black font-semibold whitespace-nowrap"
-                  >
-                    <Icon name="Copy" size={18} className="mr-2" />
-                    Копировать
-                  </Button>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+                  <Card className="bg-muted/30 border-primary/20 p-3 md:p-4">
+                    <div className="flex flex-col items-center text-center">
+                      <Icon name="Coins" className="text-primary mb-2" size={24} />
+                      <p className="text-xs text-muted-foreground">Баланс</p>
+                      <p className="text-lg md:text-xl font-bold text-primary">{Math.floor(coins)}</p>
+                    </div>
+                  </Card>
+
+                  <Card className="bg-muted/30 border-primary/20 p-3 md:p-4">
+                    <div className="flex flex-col items-center text-center">
+                      <Icon name="TrendingUp" className="text-primary mb-2" size={24} />
+                      <p className="text-xs text-muted-foreground">Заработано</p>
+                      <p className="text-lg md:text-xl font-bold text-primary">{Math.floor(totalEarned)}</p>
+                    </div>
+                  </Card>
+
+                  <Card className="bg-muted/30 border-primary/20 p-3 md:p-4">
+                    <div className="flex flex-col items-center text-center">
+                      <Icon name="MousePointerClick" className="text-primary mb-2" size={24} />
+                      <p className="text-xs text-muted-foreground">Кликов</p>
+                      <p className="text-lg md:text-xl font-bold text-primary">{totalClicks}</p>
+                    </div>
+                  </Card>
+
+                  <Card className="bg-muted/30 border-primary/20 p-3 md:p-4">
+                    <div className="flex flex-col items-center text-center">
+                      <Icon name="Zap" className="text-primary mb-2" size={24} />
+                      <p className="text-xs text-muted-foreground">Авто/сек</p>
+                      <p className="text-lg md:text-xl font-bold text-primary">+{autoClickRate}</p>
+                    </div>
+                  </Card>
                 </div>
+
+                <Card className="bg-primary/10 border-primary/30 p-4 md:p-6">
+                  <h3 className="text-lg md:text-xl font-semibold mb-3 md:mb-4 text-primary flex items-center gap-2">
+                    <Icon name="Link" size={20} />
+                    Реферальная ссылка
+                  </h3>
+                  <p className="text-xs md:text-sm text-muted-foreground mb-3">
+                    Поделитесь ссылкой с друзьями — они получат 50 монет при первом входе!
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      value={`${window.location.origin}?ref=${referralId}`}
+                      readOnly
+                      className="bg-muted/30 border-primary/30 text-white font-mono text-xs md:text-sm"
+                    />
+                    <Button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}?ref=${referralId}`);
+                        toast({
+                          title: "Скопировано!",
+                          description: "Реферальная ссылка скопирована в буфер обмена",
+                        });
+                      }}
+                      className="bg-primary hover:bg-primary/80 text-black font-semibold whitespace-nowrap"
+                    >
+                      <Icon name="Copy" size={18} className="mr-2" />
+                      Копировать
+                    </Button>
+                  </div>
+                </Card>
               </Card>
 
-              <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <Card className="bg-muted/30 border-primary/20 p-6">
-                    <div className="flex items-center gap-3">
-                      <Icon name="Coins" className="text-primary" size={32} />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Всего монет</p>
-                        <p className="text-2xl font-bold text-primary">{Math.floor(coins)}</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="bg-muted/30 border-primary/20 p-6">
-                    <div className="flex items-center gap-3">
-                      <Icon name="MousePointerClick" className="text-primary" size={32} />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Всего кликов</p>
-                        <p className="text-2xl font-bold text-primary">{totalClicks}</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="bg-muted/30 border-primary/20 p-6">
-                    <div className="flex items-center gap-3">
-                      <Icon name="Zap" className="text-primary" size={32} />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Сила клика</p>
-                        <p className="text-2xl font-bold text-primary">+{clickPower}</p>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card className="bg-muted/30 border-primary/20 p-6">
-                    <div className="flex items-center gap-3">
-                      <Icon name="TrendingUp" className="text-primary" size={32} />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Авто/сек</p>
-                        <p className="text-2xl font-bold text-primary">+{autoClickRate}</p>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-
-                <Card className="bg-muted/30 border-primary/20 p-6">
-                  <h3 className="text-xl font-semibold mb-4 text-primary">🏆 Улучшения</h3>
-                  <div className="space-y-3">
-                    {upgrades.filter(u => u.owned > 0).map((upgrade) => (
-                      <div key={upgrade.id} className="flex items-center justify-between">
-                        <span className="text-white">{upgrade.name}</span>
-                        <span className="text-primary font-semibold">x{upgrade.owned}</span>
-                      </div>
+              <div className="grid lg:grid-cols-2 gap-6">
+                <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-6">
+                  <h3 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6 text-primary neon-text flex items-center gap-2">
+                    <Icon name="Trophy" size={24} />
+                    Таблица лидеров
+                  </h3>
+                  <div className="space-y-2">
+                    {getLeaderboard().map((entry, index) => (
+                      <Card
+                        key={entry.username}
+                        className={`p-3 md:p-4 ${
+                          entry.username === username
+                            ? 'bg-primary/20 border-primary neon-glow'
+                            : 'bg-muted/30 border-primary/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold ${
+                              index === 0 ? 'bg-yellow-500/20 text-yellow-400' :
+                              index === 1 ? 'bg-gray-400/20 text-gray-300' :
+                              index === 2 ? 'bg-orange-500/20 text-orange-400' :
+                              'bg-muted/50 text-muted-foreground'
+                            }`}>
+                              {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
+                            </div>
+                            <div>
+                              <p className="font-semibold text-white text-sm md:text-base">{entry.username}</p>
+                              <p className="text-xs text-muted-foreground">#{entry.rank}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Icon name="Coins" size={16} className="text-primary" />
+                            <span className="font-bold text-primary text-sm md:text-base">{Math.floor(entry.coins)}</span>
+                          </div>
+                        </div>
+                      </Card>
                     ))}
-                    {upgrades.filter(u => u.owned > 0).length === 0 && (
-                      <p className="text-muted-foreground text-center py-4">
-                        Пока нет купленных улучшений
-                      </p>
+                    {getLeaderboard().length === 0 && (
+                      <p className="text-center text-muted-foreground py-8">Пока нет записей в таблице лидеров</p>
                     )}
                   </div>
                 </Card>
 
-                <Card className="bg-muted/30 border-primary/20 p-6">
-                  <h3 className="text-xl font-semibold mb-4 text-primary">📊 Прогресс</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm">До 1000 монет</span>
-                        <span className="text-sm text-primary">{Math.floor((coins / 1000) * 100)}%</span>
-                      </div>
-                      <Progress value={(coins / 1000) * 100} className="h-2" />
-                    </div>
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm">До 100 кликов</span>
-                        <span className="text-sm text-primary">{Math.floor((totalClicks / 100) * 100)}%</span>
-                      </div>
-                      <Progress value={(totalClicks / 100) * 100} className="h-2" />
-                    </div>
+                <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-6">
+                  <h3 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6 text-primary neon-text flex items-center gap-2">
+                    <Icon name="Award" size={24} />
+                    Достижения
+                  </h3>
+                  <div className="space-y-3">
+                    {achievements.map((achievement) => {
+                      const completed = achievement.isCompleted({ coins, clickPower, autoClickRate, totalClicks, usedPromoCodes, upgrades, referralId, username, totalEarned, hasPremium });
+                      return (
+                        <Card
+                          key={achievement.id}
+                          className={`p-3 md:p-4 transition-all ${
+                            completed
+                              ? 'bg-primary/20 border-primary neon-glow'
+                              : 'bg-muted/30 border-primary/20 opacity-60'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="text-3xl md:text-4xl">{achievement.emoji}</div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <h4 className="font-semibold text-white text-sm md:text-base">{achievement.name}</h4>
+                                {completed && (
+                                  <Icon name="CheckCircle2" size={20} className="text-primary" />
+                                )}
+                              </div>
+                              <p className="text-xs md:text-sm text-muted-foreground">{achievement.description}</p>
+                            </div>
+                          </div>
+                        </Card>
+                      );
+                    })}
                   </div>
+
+                  {!hasPremium && (
+                    <Button
+                      onClick={() => {
+                        setHasPremium(true);
+                        toast({
+                          title: "MAY PLUS активирован! 💎",
+                          description: "Теперь вы премиум пользователь!",
+                        });
+                      }}
+                      className="w-full mt-6 bg-gradient-to-r from-yellow-500 to-primary hover:from-yellow-600 hover:to-primary/80 text-black font-bold text-base md:text-lg h-12 md:h-14"
+                    >
+                      <Icon name="Crown" size={20} className="mr-2" />
+                      Купить MAY PLUS
+                    </Button>
+                  )}
                 </Card>
               </div>
-            </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>
