@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -61,6 +62,7 @@ const loadGame = (): GameSave | null => {
 };
 
 const Index = () => {
+  const navigate = useNavigate();
   const savedGame = loadGame();
 
   const [referralId] = useState(() => {
@@ -158,7 +160,7 @@ const Index = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData));
     
     try {
-      await fetch(PLAYER_API, {
+      const response = await fetch(PLAYER_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -172,6 +174,14 @@ const Index = () => {
           hasPremium,
         }),
       });
+
+      if (response.status === 403) {
+        const data = await response.json();
+        if (data.blocked) {
+          localStorage.setItem('block_reason', data.reason);
+          navigate('/blocked');
+        }
+      }
     } catch (error) {
       console.error('Failed to save to server:', error);
     }
@@ -266,6 +276,22 @@ const Index = () => {
   }, [coins, clickPower, autoClickRate, totalClicks, usedPromoCodes, upgrades, username, totalEarned, hasPremium]);
 
   useEffect(() => {
+    const checkBlockStatus = async () => {
+      try {
+        const response = await fetch(`${PLAYER_API}?playerId=${referralId}`);
+        if (response.status === 403) {
+          const data = await response.json();
+          if (data.blocked) {
+            localStorage.setItem('block_reason', data.reason);
+            navigate('/blocked');
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check block status:', error);
+      }
+    };
+
+    checkBlockStatus();
     loadLeaderboard();
     const interval = setInterval(loadLeaderboard, 30000);
     return () => clearInterval(interval);

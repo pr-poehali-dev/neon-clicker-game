@@ -1,0 +1,17 @@
+{
+  "tests": [
+    {
+      "name": "Get all players (admin)",
+      "method": "GET",
+      "path": "/",
+      "headers": {
+        "X-Admin-Password": "test_password"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "players": []
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

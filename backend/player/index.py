@@ -47,6 +47,25 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn = psycopg2.connect(dsn)
         try:
             cur = conn.cursor()
+            
+            # Проверяем блокировку
+            cur.execute("SELECT reason FROM blocked_players WHERE player_id = %s", (player_id,))
+            blocked = cur.fetchone()
+            
+            if blocked:
+                cur.close()
+                conn.close()
+                return {
+                    'statusCode': 403,
+                    'headers': {'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
+                    'body': json.dumps({
+                        'error': 'Account blocked',
+                        'blocked': True,
+                        'reason': blocked[0]
+                    }),
+                    'isBase64Encoded': False
+                }
+            
             cur.execute("""
                 SELECT username, coins, total_earned, total_clicks, click_power, 
                        auto_click_rate, has_premium
@@ -114,6 +133,24 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         conn = psycopg2.connect(dsn)
         try:
             cur = conn.cursor()
+            
+            # Проверяем блокировку перед сохранением
+            cur.execute("SELECT reason FROM blocked_players WHERE player_id = %s", (player_id,))
+            blocked = cur.fetchone()
+            
+            if blocked:
+                cur.close()
+                conn.close()
+                return {
+                    'statusCode': 403,
+                    'headers': {'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json'},
+                    'body': json.dumps({
+                        'error': 'Account blocked',
+                        'blocked': True,
+                        'reason': blocked[0]
+                    }),
+                    'isBase64Encoded': False
+                }
             
             cur.execute("""
                 INSERT INTO players (player_id, username, coins, total_earned, total_clicks, 
