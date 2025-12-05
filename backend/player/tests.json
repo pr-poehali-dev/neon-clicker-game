@@ -1,0 +1,24 @@
+{
+  "tests": [
+    {
+      "name": "Save player data",
+      "method": "POST",
+      "path": "/",
+      "body": {
+        "playerId": "test123",
+        "username": "TestPlayer",
+        "coins": 100,
+        "totalEarned": 100,
+        "totalClicks": 50,
+        "clickPower": 1,
+        "autoClickRate": 0,
+        "hasPremium": false
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "success": true
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

@@ -45,7 +45,12 @@ interface LeaderboardEntry {
   username: string;
   coins: number;
   rank: number;
+  totalEarned?: number;
+  hasPremium?: boolean;
 }
+
+const PLAYER_API = 'https://functions.poehali.dev/e770c24a-1639-4d22-a2db-c82a02d2a616';
+const LEADERBOARD_API = 'https://functions.poehali.dev/a3bb47f6-d2c5-4f3a-809e-fff2b223521f';
 
 const loadGame = (): GameSave | null => {
   const saved = localStorage.getItem(STORAGE_KEY);
@@ -68,10 +73,15 @@ const Index = () => {
   });
 
   const [username, setUsername] = useState(savedGame?.username || `Player${Math.floor(Math.random() * 9999)}`);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [newUsername, setNewUsername] = useState(username);
 
   const [totalEarned, setTotalEarned] = useState(savedGame?.totalEarned || 0);
 
   const [hasPremium, setHasPremium] = useState(savedGame?.hasPremium || false);
+
+  const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
 
   const [coins, setCoins] = useState(savedGame?.coins || 0);
   const [clickPower, setClickPower] = useState(savedGame?.clickPower || 1);
@@ -132,7 +142,7 @@ const Index = () => {
     'CYBERPUNK': 1000,
   };
 
-  const saveGame = () => {
+  const saveGame = async () => {
     const gameData: GameSave = {
       coins,
       clickPower,
@@ -146,29 +156,56 @@ const Index = () => {
       hasPremium,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData));
-    updateLeaderboard(gameData);
-  };
-
-  const updateLeaderboard = (gameData: GameSave) => {
-    const leaderboardKey = 'maycoin_leaderboard';
-    const saved = localStorage.getItem(leaderboardKey);
-    let leaderboard: LeaderboardEntry[] = saved ? JSON.parse(saved) : [];
-
-    const existingIndex = leaderboard.findIndex(e => e.username === gameData.username);
-    if (existingIndex >= 0) {
-      leaderboard[existingIndex].coins = gameData.coins;
-    } else {
-      leaderboard.push({ username: gameData.username, coins: gameData.coins, rank: 0 });
+    
+    try {
+      await fetch(PLAYER_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          playerId: referralId,
+          username,
+          coins,
+          totalEarned,
+          totalClicks,
+          clickPower,
+          autoClickRate,
+          hasPremium,
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to save to server:', error);
     }
-
-    leaderboard.sort((a, b) => b.coins - a.coins);
-    leaderboard = leaderboard.slice(0, 10).map((entry, index) => ({ ...entry, rank: index + 1 }));
-    localStorage.setItem(leaderboardKey, JSON.stringify(leaderboard));
   };
 
-  const getLeaderboard = (): LeaderboardEntry[] => {
-    const saved = localStorage.getItem('maycoin_leaderboard');
-    return saved ? JSON.parse(saved) : [];
+  const loadLeaderboard = async () => {
+    setIsLoadingLeaderboard(true);
+    try {
+      const response = await fetch(LEADERBOARD_API);
+      const data = await response.json();
+      setLeaderboard(data.leaderboard || []);
+    } catch (error) {
+      console.error('Failed to load leaderboard:', error);
+    } finally {
+      setIsLoadingLeaderboard(false);
+    }
+  };
+
+  const updateUsername = async () => {
+    if (newUsername.trim().length < 3) {
+      toast({
+        title: "Имя слишком короткое",
+        description: "Минимум 3 символа",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setUsername(newUsername.trim());
+    setIsEditingName(false);
+    toast({
+      title: "Имя изменено!",
+      description: `Теперь вы ${newUsername.trim()}`,
+    });
   };
 
   const achievements: Achievement[] = [
@@ -211,7 +248,6 @@ const Index = () => {
       description: 'Займите первое место в таблице лидеров',
       requirement: 'rank1',
       isCompleted: (game) => {
-        const leaderboard = getLeaderboard();
         return leaderboard[0]?.username === game.username;
       },
     },
@@ -228,6 +264,12 @@ const Index = () => {
   useEffect(() => {
     saveGame();
   }, [coins, clickPower, autoClickRate, totalClicks, usedPromoCodes, upgrades, username, totalEarned, hasPremium]);
+
+  useEffect(() => {
+    loadLeaderboard();
+    const interval = setInterval(loadLeaderboard, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (autoClickRate > 0) {
@@ -587,7 +629,47 @@ const Index = () => {
                     <Icon name="User" size={40} className="text-black md:w-12 md:h-12" />
                   </div>
                   <div className="text-center md:text-left flex-1">
-                    <h2 className="text-2xl md:text-3xl font-bold text-primary neon-text">{username}</h2>
+                    {isEditingName ? (
+                      <div className="flex gap-2 items-center justify-center md:justify-start">
+                        <Input
+                          value={newUsername}
+                          onChange={(e) => setNewUsername(e.target.value)}
+                          className="max-w-xs bg-muted/30 border-primary/30 text-white"
+                          placeholder="Новое имя"
+                          onKeyPress={(e) => e.key === 'Enter' && updateUsername()}
+                        />
+                        <Button
+                          onClick={updateUsername}
+                          size="sm"
+                          className="bg-primary hover:bg-primary/80 text-black"
+                        >
+                          <Icon name="Check" size={16} />
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setIsEditingName(false);
+                            setNewUsername(username);
+                          }}
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-white"
+                        >
+                          <Icon name="X" size={16} />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 justify-center md:justify-start">
+                        <h2 className="text-2xl md:text-3xl font-bold text-primary neon-text">{username}</h2>
+                        <Button
+                          onClick={() => setIsEditingName(true)}
+                          size="sm"
+                          variant="ghost"
+                          className="text-muted-foreground hover:text-primary"
+                        >
+                          <Icon name="Edit2" size={16} />
+                        </Button>
+                      </div>
+                    )}
                     <p className="text-muted-foreground text-sm md:text-base">Кликер-магнат</p>
                   </div>
                   {hasPremium && (
@@ -667,12 +749,23 @@ const Index = () => {
 
               <div className="grid lg:grid-cols-2 gap-6">
                 <Card className="bg-card/80 backdrop-blur border-primary/30 p-4 md:p-6">
-                  <h3 className="text-xl md:text-2xl font-semibold mb-4 md:mb-6 text-primary neon-text flex items-center gap-2">
-                    <Icon name="Trophy" size={24} />
-                    Таблица лидеров
-                  </h3>
+                  <div className="flex items-center justify-between mb-4 md:mb-6">
+                    <h3 className="text-xl md:text-2xl font-semibold text-primary neon-text flex items-center gap-2">
+                      <Icon name="Trophy" size={24} />
+                      Таблица лидеров
+                    </h3>
+                    <Button
+                      onClick={loadLeaderboard}
+                      size="sm"
+                      variant="ghost"
+                      disabled={isLoadingLeaderboard}
+                      className="text-primary hover:text-primary/80"
+                    >
+                      <Icon name="RefreshCw" size={16} className={isLoadingLeaderboard ? 'animate-spin' : ''} />
+                    </Button>
+                  </div>
                   <div className="space-y-2">
-                    {getLeaderboard().map((entry, index) => (
+                    {leaderboard.map((entry, index) => (
                       <Card
                         key={entry.username}
                         className={`p-3 md:p-4 ${
@@ -691,9 +784,14 @@ const Index = () => {
                             }`}>
                               {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
                             </div>
-                            <div>
-                              <p className="font-semibold text-white text-sm md:text-base">{entry.username}</p>
-                              <p className="text-xs text-muted-foreground">#{entry.rank}</p>
+                            <div className="flex items-center gap-2">
+                              <div>
+                                <p className="font-semibold text-white text-sm md:text-base">{entry.username}</p>
+                                <p className="text-xs text-muted-foreground">#{entry.rank}</p>
+                              </div>
+                              {entry.hasPremium && (
+                                <Icon name="Crown" size={14} className="text-yellow-400" />
+                              )}
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
@@ -703,8 +801,11 @@ const Index = () => {
                         </div>
                       </Card>
                     ))}
-                    {getLeaderboard().length === 0 && (
-                      <p className="text-center text-muted-foreground py-8">Пока нет записей в таблице лидеров</p>
+                    {leaderboard.length === 0 && !isLoadingLeaderboard && (
+                      <p className="text-center text-muted-foreground py-8">Таблица лидеров пуста</p>
+                    )}
+                    {isLoadingLeaderboard && (
+                      <p className="text-center text-muted-foreground py-8">Загрузка...</p>
                     )}
                   </div>
                 </Card>
