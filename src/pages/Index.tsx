@@ -47,42 +47,31 @@ interface LeaderboardEntry {
   rank: number;
 }
 
+const loadGame = (): GameSave | null => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    return JSON.parse(saved);
+  }
+  return null;
+};
+
 const Index = () => {
+  const savedGame = loadGame();
+
   const [referralId] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const refId = params.get('ref');
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const data: GameSave = JSON.parse(saved);
-      return data.referralId || Math.random().toString(36).substring(2, 10);
+    if (savedGame) {
+      return savedGame.referralId || Math.random().toString(36).substring(2, 10);
     }
     return refId || Math.random().toString(36).substring(2, 10);
   });
 
-  const [username, setUsername] = useState(() => {
-    const saved = loadGame();
-    return saved?.username || `Player${Math.floor(Math.random() * 9999)}`;
-  });
+  const [username, setUsername] = useState(savedGame?.username || `Player${Math.floor(Math.random() * 9999)}`);
 
-  const [totalEarned, setTotalEarned] = useState(() => {
-    const saved = loadGame();
-    return saved?.totalEarned || 0;
-  });
+  const [totalEarned, setTotalEarned] = useState(savedGame?.totalEarned || 0);
 
-  const [hasPremium, setHasPremium] = useState(() => {
-    const saved = loadGame();
-    return saved?.hasPremium || false;
-  });
-
-  const loadGame = (): GameSave | null => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-    return null;
-  };
-
-  const savedGame = loadGame();
+  const [hasPremium, setHasPremium] = useState(savedGame?.hasPremium || false);
 
   const [coins, setCoins] = useState(savedGame?.coins || 0);
   const [clickPower, setClickPower] = useState(savedGame?.clickPower || 1);
