@@ -17,17 +17,50 @@ interface Upgrade {
   owned: number;
 }
 
+const STORAGE_KEY = 'maycoin_save';
+
+interface GameSave {
+  coins: number;
+  clickPower: number;
+  autoClickRate: number;
+  totalClicks: number;
+  usedPromoCodes: string[];
+  upgrades: Upgrade[];
+  referralId: string;
+}
+
 const Index = () => {
-  const [coins, setCoins] = useState(0);
-  const [clickPower, setClickPower] = useState(1);
-  const [autoClickRate, setAutoClickRate] = useState(0);
-  const [totalClicks, setTotalClicks] = useState(0);
+  const [referralId] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refId = params.get('ref');
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const data: GameSave = JSON.parse(saved);
+      return data.referralId || Math.random().toString(36).substring(2, 10);
+    }
+    return refId || Math.random().toString(36).substring(2, 10);
+  });
+
+  const loadGame = (): GameSave | null => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    return null;
+  };
+
+  const savedGame = loadGame();
+
+  const [coins, setCoins] = useState(savedGame?.coins || 0);
+  const [clickPower, setClickPower] = useState(savedGame?.clickPower || 1);
+  const [autoClickRate, setAutoClickRate] = useState(savedGame?.autoClickRate || 0);
+  const [totalClicks, setTotalClicks] = useState(savedGame?.totalClicks || 0);
   const [promoCode, setPromoCode] = useState('');
-  const [usedPromoCodes, setUsedPromoCodes] = useState<string[]>([]);
+  const [usedPromoCodes, setUsedPromoCodes] = useState<string[]>(savedGame?.usedPromoCodes || []);
   const [isSpinning, setIsSpinning] = useState(false);
   const [wheelRotation, setWheelRotation] = useState(0);
 
-  const [upgrades, setUpgrades] = useState<Upgrade[]>([
+  const [upgrades, setUpgrades] = useState<Upgrade[]>(savedGame?.upgrades || [
     {
       id: 'click1',
       name: 'Усилитель клика',
@@ -77,6 +110,23 @@ const Index = () => {
     'CYBERPUNK': 1000,
   };
 
+  const saveGame = () => {
+    const gameData: GameSave = {
+      coins,
+      clickPower,
+      autoClickRate,
+      totalClicks,
+      usedPromoCodes,
+      upgrades,
+      referralId,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(gameData));
+  };
+
+  useEffect(() => {
+    saveGame();
+  }, [coins, clickPower, autoClickRate, totalClicks, usedPromoCodes, upgrades]);
+
   useEffect(() => {
     if (autoClickRate > 0) {
       const interval = setInterval(() => {
@@ -85,6 +135,18 @@ const Index = () => {
       return () => clearInterval(interval);
     }
   }, [autoClickRate]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refId = params.get('ref');
+    if (refId && refId !== referralId) {
+      setCoins((prev) => prev + 50);
+      toast({
+        title: "Бонус за реферала! 🎉",
+        description: "+50 монет за переход по реферальной ссылке",
+      });
+    }
+  }, []);
 
   const handleClick = () => {
     setCoins((prev) => prev + clickPower);
@@ -423,6 +485,36 @@ const Index = () => {
                   <p className="text-muted-foreground">Кликер-магнат</p>
                 </div>
               </div>
+
+              <Card className="bg-primary/10 border-primary/30 p-6 mb-6">
+                <h3 className="text-xl font-semibold mb-4 text-primary flex items-center gap-2">
+                  <Icon name="Link" size={20} />
+                  Реферальная ссылка
+                </h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Поделитесь ссылкой с друзьями — они получат 50 монет при первом входе!
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    value={`${window.location.origin}?ref=${referralId}`}
+                    readOnly
+                    className="bg-muted/30 border-primary/30 text-white font-mono text-sm"
+                  />
+                  <Button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}?ref=${referralId}`);
+                      toast({
+                        title: "Скопировано!",
+                        description: "Реферальная ссылка скопирована в буфер обмена",
+                      });
+                    }}
+                    className="bg-primary hover:bg-primary/80 text-black font-semibold whitespace-nowrap"
+                  >
+                    <Icon name="Copy" size={18} className="mr-2" />
+                    Копировать
+                  </Button>
+                </div>
+              </Card>
 
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
